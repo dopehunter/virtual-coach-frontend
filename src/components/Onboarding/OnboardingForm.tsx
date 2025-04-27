@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../../lib/supabaseClient'; // Import supabase client
 
 interface OnboardingFormProps {
   onComplete: () => void; // Callback when onboarding is finished
@@ -36,20 +37,40 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({ onComplete }) => {
     setError(null);
     console.log("Submitting onboarding data:", formData);
 
-    // --- TODO: Call backend /assessments endpoint --- 
-    // Example structure (replace with actual API call later)
     try {
-      // const response = await fetch('/api/assessments', { // Assuming API proxy or full URL
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json', /* Add Auth header */ },
-      //   body: JSON.stringify(formData),
-      // });
-      // if (!response.ok) throw new Error('Failed to submit assessment');
-      
-      // Simulate backend call success for now
-      await new Promise(resolve => setTimeout(resolve, 1000)); 
-      console.log("Assessment submitted successfully (simulated).");
-      onComplete(); // Notify App component
+      // 1. Get the current session token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw new Error(`Authentication error: ${sessionError.message}`);
+      }
+      if (!session) {
+        throw new Error('User not authenticated. Please log in again.');
+      }
+
+      const token = session.accessToken;
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/assessments`;
+
+      // 2. Call the backend API
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      // 3. Handle the response
+      if (!response.ok) {
+         const errorData = await response.json().catch(() => ({ detail: response.statusText })); // Try to parse error JSON
+         console.error('API Error Response:', errorData);
+         throw new Error(`Failed to submit assessment: ${errorData.detail || response.statusText}`);
+      }
+
+      const result = await response.json(); // Contains swim_level, run_level, message
+      console.log("Assessment submitted successfully:", result);
+      onComplete(); // Notify App component that onboarding is done
 
     } catch (err) {
       console.error("Submission error:", err);
